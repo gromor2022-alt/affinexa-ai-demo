@@ -137,6 +137,18 @@ with tab3:
             else:
                 st.warning("Quantity not detected")
 
+        st.markdown("---")
+        st.subheader("Procurement Alert (Demo)")
+
+        supplier_email = st.text_input("Supplier / Procurement Email")
+        deadline = st.date_input("Procurement Deadline")
+
+        if st.button("Send Procurement Alert"):
+            st.success("Procurement alert sent to supplier and internal team.")
+            st.info(f"Deadline set: {deadline}")
+            st.info("Automatic reminders scheduled for T-3 days, T-1 day, and Due Date.")
+
+
 
 # ---------------- TAB 4 ----------------
 

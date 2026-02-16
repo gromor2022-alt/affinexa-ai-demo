@@ -119,14 +119,26 @@ with tab3:
 
         st.text_area("PDF Text", extracted, height=300)
 
-        # Simple buyer + qty extraction
-        buyer = extracted.split("\n")[0]
+                lines = extracted.split("\n")
 
-        qty = re.findall(r"\b\d+\b", extracted)
+        buyer = lines[0] if lines else "Not detected"
 
-        st.success(f"Buyer (approx): {buyer}")
-        if qty:
-            st.success(f"Quantities found: {qty[:5]}")
+        qty_matches = re.findall(r"\b\d+(?:\.\d+)?\b", extracted)
+
+        total_qty = qty_matches[:5]
+
+        st.subheader("Detected Invoice Info")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.success(f"Buyer (approx): {buyer}")
+
+        with col2:
+            if total_qty:
+                st.success(f"Quantities detected: {', '.join(total_qty)}")
+            else:
+                st.warning("Quantity not detected")
 
 # ---------------- TAB 4 ----------------
 

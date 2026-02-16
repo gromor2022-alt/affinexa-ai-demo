@@ -122,7 +122,17 @@ with tab3:
         lines = extracted.split("\n")
         buyer = lines[0] if lines else "Not detected"
 
-        qty_matches = re.findall(r"\b\d+(?:\.\d+)?\b", extracted)
+        # Try to find quantity near keywords like qty / quantity / pcs
+qty_matches = re.findall(
+    r"(?:qty|quantity|pcs|pieces)\s*[:\-]?\s*(\d+)",
+    extracted.lower()
+)
+
+# Fallback: pick small numbers only (avoid years, invoice numbers)
+if not qty_matches:
+    all_numbers = re.findall(r"\b\d+\b", extracted)
+    qty_matches = [n for n in all_numbers if 0 < int(n) < 10000]
+
 
         st.subheader("Detected Invoice Info")
 

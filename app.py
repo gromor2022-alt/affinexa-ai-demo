@@ -131,18 +131,24 @@ with tab3:
 # ---------------- TAB 4 ----------------
 
 with tab4:
-    st.header("Mini Dashboard")
+    st.header("Operations Dashboard")
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
+
+    # Total Rows
+    if st.session_state.df is not None:
+        total_rows = len(st.session_state.df)
+        unique_products = st.session_state.df["item order"].nunique() if "item order" in st.session_state.df.columns else 0
+    else:
+        total_rows = 0
+        unique_products = 0
 
     with col1:
-        if st.session_state.df is not None:
-            st.metric("Total Rows", len(st.session_state.df))
-        else:
-            st.metric("Total Rows", 0)
+        st.metric("Total Records", total_rows)
 
     with col2:
-        if st.session_state.pdf_text:
-            st.metric("PDF Loaded", "Yes")
-        else:
-            st.metric("PDF Loaded", "No")
+        st.metric("Unique Product Orders", unique_products)
+
+    with col3:
+        status = "Loaded" if st.session_state.pdf_text else "Not Loaded"
+        st.metric("Invoice Status", status)

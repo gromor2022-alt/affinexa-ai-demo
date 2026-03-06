@@ -241,9 +241,60 @@ with tab4:
 
 with tab5:
 
-    st.header("Department Communication")
+    st.header("Department Task Board")
 
     if st.session_state.tasks:
+
+        pending = []
+        progress = []
+        completed = []
+
+        for task in st.session_state.tasks:
+
+            if task["Status"] == "Pending":
+                pending.append(task)
+
+            elif task["Status"] == "In Progress":
+                progress.append(task)
+
+            else:
+                completed.append(task)
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.subheader("Pending")
+
+            for t in pending:
+
+                st.markdown(f"""
+                *Department:* {t['Department']}  
+                *Task:* {t['Task']}
+                """)
+
+        with col2:
+            st.subheader("In Progress")
+
+            for t in progress:
+
+                st.markdown(f"""
+                *Department:* {t['Department']}  
+                *Task:* {t['Task']}
+                """)
+
+        with col3:
+            st.subheader("Completed")
+
+            for t in completed:
+
+                st.markdown(f"""
+                *Department:* {t['Department']}  
+                *Task:* {t['Task']}
+                """)
+
+        st.markdown("---")
+
+        st.subheader("Update Task Status")
 
         for i, task in enumerate(st.session_state.tasks):
 
@@ -255,14 +306,14 @@ with tab5:
             status = col3.selectbox(
                 "Status",
                 ["Pending", "In Progress", "Completed"],
-                key=i
+                index=["Pending","In Progress","Completed"].index(task["Status"]),
+                key=f"status_{i}"
             )
 
             st.session_state.tasks[i]["Status"] = status
 
     else:
-
-        st.info("No tasks available")
+        st.info("No tasks created yet. Upload Excel to generate tasks.")
 
 # ---------------- COURIER TRACKER ---------------- #
 

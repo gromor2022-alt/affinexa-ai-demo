@@ -4,6 +4,18 @@ import pdfplumber
 import re
 from rapidfuzz import process, fuzz
 
+st.set_page_config(page_title="AffiNexa Operations", layout="wide")
+
+# ---------------- UI STYLE ---------------- #
+
+st.markdown("""
+<style>
+.main {background-color:#f5f7fb;}
+h1 {color:#1f4e79;}
+.stMetric {background-color:white;padding:15px;border-radius:10px;border:1px solid #e6e6e6;}
+</style>
+""", unsafe_allow_html=True)
+
 # ---------------- LOGIN ---------------- #
 
 def check_login():
@@ -11,15 +23,18 @@ def check_login():
         st.session_state.logged_in = False
 
     if not st.session_state.logged_in:
+
         st.title("AffiNexa AI Demo Login")
 
         user = st.text_input("Username")
         pwd = st.text_input("Password", type="password")
 
         if st.button("Login"):
+
             if user == "demo" and pwd == "AffiNexa@123":
                 st.session_state.logged_in = True
                 st.rerun()
+
             else:
                 st.error("Invalid credentials")
 
@@ -27,42 +42,100 @@ def check_login():
 
 check_login()
 
-# ---------------- APP START ---------------- #
-
-st.set_page_config(page_title="AffiNexa AI Operations", layout="wide")
-st.title("AffiNexa AI Operations Control Panel")
-
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "Upload Excel",
-    "Product Grouping",
-    "Upload PDF",
-    "Dashboard",
-    "Department Tasks",
-    "Courier Tracker"
-])
+# ---------------- SESSION STORAGE ---------------- #
 
 if "df" not in st.session_state:
     st.session_state.df = None
 
+if "tasks" not in st.session_state:
+    st.session_state.tasks = []
+
 if "pdf_text" not in st.session_state:
     st.session_state.pdf_text = ""
 
-# ---------------- TAB 1 : EXCEL ---------------- #
+# ---------------- HEADER ---------------- #
+
+st.title("Banares Beads Operations Control System")
+
+st.markdown(
+"Central dashboard for *order intake, department coordination and shipment tracking*"
+)
+
+# ---------------- TABS ---------------- #
+
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "Dashboard",
+    "Upload Excel",
+    "Product Grouping",
+    "Upload Sales Contract",
+    "Department Tasks",
+    "Courier Tracker"
+])
+
+# ---------------- DASHBOARD ---------------- #
 
 with tab1:
 
-    st.header("Upload Product Excel")
+    st.header("Operations Dashboard")
+
+    total_records = len(st.session_state.df) if st.session_state.df is not None else 0
+    active_tasks = len(st.session_state.tasks)
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("Orders Loaded", total_records)
+    col2.metric("Department Tasks", active_tasks)
+    col3.metric("Active Shipments", 2)
+    col4.metric("Departments Active", 5)
+
+    st.markdown("---")
+
+    st.subheader("Department Task Overview")
+
+    if st.session_state.tasks:
+        st.dataframe(pd.DataFrame(st.session_state.tasks))
+    else:
+        st.info("No tasks created yet")
+
+# ---------------- EXCEL UPLOAD ---------------- #
+
+with tab2:
+
+    st.header("Upload Sales / Order Excel")
 
     excel = st.file_uploader("Upload Excel file", type=["xlsx"])
 
     if excel:
+
         df = pd.read_excel(excel)
         st.session_state.df = df
+
+        st.success("Excel uploaded successfully")
         st.dataframe(df)
 
-# ---------------- TAB 2 : PRODUCT GROUPING ---------------- #
+        if st.button("Generate Department Tasks"):
 
-with tab2:
+            departments = [
+                "Procurement",
+                "Raw Material",
+                "Polishing",
+                "Packaging",
+                "Dispatch"
+            ]
+
+            for dept in departments:
+
+                st.session_state.tasks.append({
+                    "Department": dept,
+                    "Task": "Process Sales Contract",
+                    "Status": "Pending"
+                })
+
+            st.success("Tasks automatically generated from Sales Contract")
+
+# ---------------- PRODUCT GROUPING ---------------- #
+
+with tab3:
 
     st.header("Product Grouping")
 
@@ -111,18 +184,18 @@ with tab2:
                     used.add(s)
 
             for master, variants in grouped.items():
+
                 st.subheader(master)
-                st.write(f"Variants: {len(variants)}")
-                st.write(variants)
+                st.write("Variants:", variants)
 
         else:
             st.warning("Required columns not found")
 
-# ---------------- TAB 3 : PDF READER ---------------- #
+# ---------------- PDF READER ---------------- #
 
-with tab3:
+with tab4:
 
-    st.header("Upload Invoice PDF")
+    st.header("Upload Sales Contract / Invoice")
 
     pdf = st.file_uploader("Upload PDF", type=["pdf"])
 
@@ -131,14 +204,17 @@ with tab3:
         extracted = ""
 
         with pdfplumber.open(pdf) as pdf_file:
+
             for page in pdf_file.pages:
+
                 t = page.extract_text()
+
                 if t:
                     extracted += t + "\n"
 
         st.session_state.pdf_text = extracted
 
-        st.text_area("PDF Text", extracted, height=250)
+        st.text_area("Extracted Text", extracted, height=250)
 
         lines = extracted.split("\n")
         buyer = lines[0] if lines else "Not detected"
@@ -149,101 +225,46 @@ with tab3:
         )
 
         if not qty_matches:
-            all_numbers = re.findall(r"\b\d+\b", extracted)
-            qty_matches = [n for n in all_numbers if 0 < int(n) < 10000]
-
-        st.subheader("Detected Invoice Info")
+            numbers = re.findall(r"\b\d+\b", extracted)
+            qty_matches = [n for n in numbers if 0 < int(n) < 10000]
 
         col1, col2 = st.columns(2)
 
-        with col1:
-            st.success(f"Buyer: {buyer}")
+        col1.success(f"Buyer: {buyer}")
 
-        with col2:
-            if qty_matches:
-                st.success(f"Quantity: {qty_matches[0]}")
-            else:
-                st.warning("Quantity not detected")
-
-        st.markdown("---")
-
-        st.subheader("Procurement Alert")
-
-        supplier = st.text_input("Supplier Email")
-
-        deadline = st.date_input("Procurement Deadline")
-
-        if st.button("Send Procurement Alert"):
-            st.success("Alert sent to supplier and internal team")
-            st.info(f"Deadline: {deadline}")
-            st.info("Reminders scheduled (T-3, T-1, Due Day)")
-
-# ---------------- TAB 4 : DASHBOARD ---------------- #
-
-with tab4:
-
-    st.header("Operations Dashboard")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    if st.session_state.df is not None:
-        total_records = len(st.session_state.df)
-    else:
-        total_records = 0
-
-    with col1:
-        st.metric("Total Records", total_records)
-
-    with col2:
-        st.metric("Active Tasks", "3")
-
-    with col3:
-        st.metric("Active Shipments", "2")
-
-    with col4:
-        if st.session_state.pdf_text:
-            st.metric("Invoice Loaded", "Yes")
+        if qty_matches:
+            col2.success(f"Quantity: {qty_matches[0]}")
         else:
-            st.metric("Invoice Loaded", "No")
+            col2.warning("Quantity not detected")
 
-    st.markdown("---")
-
-    st.subheader("System Overview")
-
-    st.write("• Order uploads")
-    st.write("• Department coordination")
-    st.write("• Procurement alerts")
-    st.write("• Courier tracking")
-
-# ---------------- TAB 5 : DEPARTMENT TASKS ---------------- #
+# ---------------- DEPARTMENT TASKS ---------------- #
 
 with tab5:
 
     st.header("Department Communication")
 
-    task = st.text_input("Task Description")
+    if st.session_state.tasks:
 
-    department = st.selectbox(
-        "Department",
-        ["Procurement", "Raw Material", "Polishing", "Packaging", "Dispatch"]
-    )
+        for i, task in enumerate(st.session_state.tasks):
 
-    deadline = st.date_input("Task Deadline")
+            col1, col2, col3 = st.columns(3)
 
-    if st.button("Create Task"):
-        st.success(f"Task assigned to {department}")
+            col1.write(task["Department"])
+            col2.write(task["Task"])
 
-    st.subheader("Update Task Status")
+            status = col3.selectbox(
+                "Status",
+                ["Pending", "In Progress", "Completed"],
+                key=i
+            )
 
-    status = st.selectbox(
-        "Status",
-        ["Pending", "In Progress", "Completed"]
-    )
+            st.session_state.tasks[i]["Status"] = status
 
-    if st.button("Update Status"):
-        st.success(f"Task status updated to {status}")
+    else:
 
-# ---------------- TAB 6 : COURIER TRACKER ---------------- #
+        st.info("No tasks available")
+
+# ---------------- COURIER TRACKER ---------------- #
 
 with tab6:
 
@@ -259,6 +280,8 @@ with tab6:
     destination = st.text_input("Destination")
 
     if st.button("Track Shipment"):
+
         st.success("Tracking information fetched")
+
         st.write("Status: In Transit")
         st.write("Expected Delivery: 3 Days")

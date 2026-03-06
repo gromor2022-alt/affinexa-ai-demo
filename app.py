@@ -4,7 +4,7 @@ import pdfplumber
 import re
 from rapidfuzz import process, fuzz
 
-st.set_page_config(page_title="AffiNexa Operations", layout="wide")
+st.set_page_config(page_title="Banares Beads Operations", layout="wide")
 
 # ---------------- UI STYLE ---------------- #
 
@@ -19,6 +19,7 @@ h1 {color:#1f4e79;}
 # ---------------- LOGIN ---------------- #
 
 def check_login():
+
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
 
@@ -50,26 +51,26 @@ if "df" not in st.session_state:
 if "tasks" not in st.session_state:
     st.session_state.tasks = []
 
-if "pdf_text" not in st.session_state:
-    st.session_state.pdf_text = ""
+if "alerts" not in st.session_state:
+    st.session_state.alerts = []
 
 # ---------------- HEADER ---------------- #
 
 st.title("Banares Beads Operations Control System")
 
 st.markdown(
-"Central dashboard for *order intake, department coordination and shipment tracking*"
+"Central dashboard for *order processing, department coordination and shipment tracking*"
 )
 
 # ---------------- TABS ---------------- #
 
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Dashboard",
-    "Upload Excel",
-    "Product Grouping",
     "Upload Sales Contract",
+    "Product Grouping",
+    "Upload PDF",
     "Department Tasks",
-    "Courier Tracker"
+    "Courier Tracking"
 ])
 
 # ---------------- DASHBOARD ---------------- #
@@ -78,60 +79,94 @@ with tab1:
 
     st.header("Operations Dashboard")
 
-    total_records = len(st.session_state.df) if st.session_state.df is not None else 0
-    active_tasks = len(st.session_state.tasks)
+    orders = len(st.session_state.df) if st.session_state.df is not None else 0
+    tasks = len(st.session_state.tasks)
 
     col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric("Orders Loaded", total_records)
-    col2.metric("Department Tasks", active_tasks)
+    col1.metric("Orders Loaded", orders)
+    col2.metric("Department Tasks", tasks)
     col3.metric("Active Shipments", 2)
     col4.metric("Departments Active", 5)
 
     st.markdown("---")
 
-    st.subheader("Department Task Overview")
+    st.subheader("Order Progress Tracker")
 
     if st.session_state.tasks:
-        st.dataframe(pd.DataFrame(st.session_state.tasks))
+
+        df = pd.DataFrame(st.session_state.tasks)
+
+        summary = df.groupby("Department")["Status"].value_counts().unstack().fillna(0)
+
+        st.dataframe(summary)
+
     else:
+
         st.info("No tasks created yet")
 
-# ---------------- EXCEL UPLOAD ---------------- #
+    st.markdown("---")
+
+    st.subheader("Recent Activity Alerts")
+
+    if st.session_state.alerts:
+
+        for alert in st.session_state.alerts[-5:]:
+
+            st.info(alert)
+
+    else:
+
+        st.write("No alerts yet")
+
+# ---------------- UPLOAD EXCEL ---------------- #
 
 with tab2:
 
-    st.header("Upload Sales / Order Excel")
+    st.header("Upload Sales Contract Excel")
 
-    excel = st.file_uploader("Upload Excel file", type=["xlsx"])
+    excel = st.file_uploader("Upload Excel", type=["xlsx"])
 
     if excel:
 
         df = pd.read_excel(excel)
+
         st.session_state.df = df
 
-        st.success("Excel uploaded successfully")
+        st.success("Sales contract uploaded")
+
         st.dataframe(df)
 
-        if st.button("Generate Department Tasks"):
+        if st.button("Generate Smart Tasks"):
 
-            departments = [
-                "Procurement",
-                "Raw Material",
-                "Polishing",
-                "Packaging",
-                "Dispatch"
-            ]
+            df.columns = df.columns.str.lower().str.strip()
 
-            for dept in departments:
+            if "item order" in df.columns:
 
-                st.session_state.tasks.append({
-                    "Department": dept,
-                    "Task": "Process Sales Contract",
-                    "Status": "Pending"
-                })
+                unique_products = df["item order"].unique()
 
-            st.success("Tasks automatically generated from Sales Contract")
+                for product in unique_products:
+
+                    departments = [
+                        ("Procurement", f"Procure raw material for {product}"),
+                        ("Polishing", f"Polish batch for {product}"),
+                        ("Packaging", f"Pack finished goods for {product}"),
+                        ("Dispatch", f"Prepare dispatch for {product}")
+                    ]
+
+                    for dept, desc in departments:
+
+                        st.session_state.tasks.append({
+                            "Department": dept,
+                            "Task": desc,
+                            "Status": "Pending"
+                        })
+
+                st.success("Smart tasks generated automatically")
+
+            else:
+
+                st.warning("Column 'item order' not found")
 
 # ---------------- PRODUCT GROUPING ---------------- #
 
@@ -142,6 +177,7 @@ with tab3:
     if st.session_state.df is not None:
 
         df = st.session_state.df.copy()
+
         df.columns = df.columns.str.lower().str.strip()
 
         if "item order" in df.columns and "item size" in df.columns:
@@ -161,35 +197,13 @@ with tab3:
 
             product_list = df["product_key"].unique()
 
-            grouped = {}
-            used = set()
+            for product in product_list:
 
-            for prod in product_list:
-
-                if prod in used:
-                    continue
-
-                matches = process.extract(
-                    prod,
-                    product_list,
-                    scorer=fuzz.ratio,
-                    limit=10
-                )
-
-                similar = [m[0] for m in matches if m[1] > 80]
-
-                grouped[prod] = similar
-
-                for s in similar:
-                    used.add(s)
-
-            for master, variants in grouped.items():
-
-                st.subheader(master)
-                st.write("Variants:", variants)
+                st.subheader(product)
 
         else:
-            st.warning("Required columns not found")
+
+            st.warning("Required columns missing")
 
 # ---------------- PDF READER ---------------- #
 
@@ -207,37 +221,29 @@ with tab4:
 
             for page in pdf_file.pages:
 
-                t = page.extract_text()
+                text = page.extract_text()
 
-                if t:
-                    extracted += t + "\n"
-
-        st.session_state.pdf_text = extracted
+                if text:
+                    extracted += text + "\n"
 
         st.text_area("Extracted Text", extracted, height=250)
 
         lines = extracted.split("\n")
+
         buyer = lines[0] if lines else "Not detected"
 
-        qty_matches = re.findall(
-            r"(?:qty|quantity|pcs|pieces)\s*[:\-]?\s*(\d+)",
-            extracted.lower()
-        )
-
-        if not qty_matches:
-            numbers = re.findall(r"\b\d+\b", extracted)
-            qty_matches = [n for n in numbers if 0 < int(n) < 10000]
+        qty = re.findall(r"\b\d+\b", extracted)
 
         col1, col2 = st.columns(2)
 
         col1.success(f"Buyer: {buyer}")
 
-        if qty_matches:
-            col2.success(f"Quantity: {qty_matches[0]}")
+        if qty:
+            col2.success(f"Quantity Detected: {qty[0]}")
         else:
             col2.warning("Quantity not detected")
 
-# ---------------- DEPARTMENT TASKS ---------------- #
+# ---------------- TASK BOARD ---------------- #
 
 with tab5:
 
@@ -245,9 +251,7 @@ with tab5:
 
     if st.session_state.tasks:
 
-        pending = []
-        progress = []
-        completed = []
+        pending, progress, completed = [], [], []
 
         for task in st.session_state.tasks:
 
@@ -263,34 +267,25 @@ with tab5:
         col1, col2, col3 = st.columns(3)
 
         with col1:
+
             st.subheader("Pending")
 
             for t in pending:
-
-                st.markdown(f"""
-                *Department:* {t['Department']}  
-                *Task:* {t['Task']}
-                """)
+                st.write(f"{t['Department']} - {t['Task']}")
 
         with col2:
+
             st.subheader("In Progress")
 
             for t in progress:
-
-                st.markdown(f"""
-                *Department:* {t['Department']}  
-                *Task:* {t['Task']}
-                """)
+                st.write(f"{t['Department']} - {t['Task']}")
 
         with col3:
+
             st.subheader("Completed")
 
             for t in completed:
-
-                st.markdown(f"""
-                *Department:* {t['Department']}  
-                *Task:* {t['Task']}
-                """)
+                st.write(f"{t['Department']} - {t['Task']}")
 
         st.markdown("---")
 
@@ -303,27 +298,40 @@ with tab5:
             col1.write(task["Department"])
             col2.write(task["Task"])
 
-            status = col3.selectbox(
+            new_status = col3.selectbox(
                 "Status",
-                ["Pending", "In Progress", "Completed"],
+                ["Pending","In Progress","Completed"],
                 index=["Pending","In Progress","Completed"].index(task["Status"]),
-                key=f"status_{i}"
+                key=f"task_{i}"
             )
 
-            st.session_state.tasks[i]["Status"] = status
+            if new_status != task["Status"]:
+
+                if new_status == "In Progress":
+                    st.session_state.alerts.append(
+                        f"⚡ {task['Department']} started task '{task['Task']}'"
+                    )
+
+                if new_status == "Completed":
+                    st.session_state.alerts.append(
+                        f"✅ {task['Department']} completed task '{task['Task']}'"
+                    )
+
+                st.session_state.tasks[i]["Status"] = new_status
 
     else:
-        st.info("No tasks created yet. Upload Excel to generate tasks.")
+
+        st.info("No tasks created yet")
 
 # ---------------- COURIER TRACKER ---------------- #
 
 with tab6:
 
-    st.header("Courier / AWB Tracking")
+    st.header("Courier Tracking")
 
     courier = st.selectbox(
         "Courier Company",
-        ["Blue Dart", "DTDC", "Delhivery", "DHL", "FedEx"]
+        ["Blue Dart","DTDC","Delhivery","DHL","FedEx"]
     )
 
     awb = st.text_input("AWB Number")
@@ -335,4 +343,5 @@ with tab6:
         st.success("Tracking information fetched")
 
         st.write("Status: In Transit")
+
         st.write("Expected Delivery: 3 Days")

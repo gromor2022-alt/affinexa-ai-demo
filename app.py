@@ -2,11 +2,10 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 import re
-from rapidfuzz import process, fuzz
 
 st.set_page_config(page_title="Banares Beads Operations", layout="wide")
 
-# ---------------- UI STYLE ---------------- #
+# ---------------- STYLE ---------------- #
 
 st.markdown("""
 <style>
@@ -18,32 +17,31 @@ h1 {color:#1f4e79;}
 
 # ---------------- LOGIN ---------------- #
 
-def check_login():
+def login():
 
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
 
     if not st.session_state.logged_in:
 
-        st.title("AffiNexa AI Demo Login")
+        st.title("AffiNexa Demo Login")
 
-        user = st.text_input("Username")
-        pwd = st.text_input("Password", type="password")
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
 
         if st.button("Login"):
 
-            if user == "demo" and pwd == "AffiNexa@123":
+            if u == "demo" and p == "AffiNexa@123":
                 st.session_state.logged_in = True
                 st.rerun()
-
             else:
                 st.error("Invalid credentials")
 
         st.stop()
 
-check_login()
+login()
 
-# ---------------- SESSION STORAGE ---------------- #
+# ---------------- SESSION ---------------- #
 
 if "df" not in st.session_state:
     st.session_state.df = None
@@ -54,23 +52,25 @@ if "tasks" not in st.session_state:
 if "alerts" not in st.session_state:
     st.session_state.alerts = []
 
+if "bom" not in st.session_state:
+    st.session_state.bom = None
+
 # ---------------- HEADER ---------------- #
 
 st.title("Banares Beads Operations Control System")
 
-st.markdown(
-"Central dashboard for *order processing, department coordination and shipment tracking*"
-)
+st.markdown("Sales Contract → *BOM Generation → Department Tasks → Dispatch Tracking*")
 
 # ---------------- TABS ---------------- #
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "Dashboard",
     "Upload Sales Contract",
-    "Product Grouping",
-    "Upload PDF",
+    "BOM Generator",
+    "Product View",
     "Department Tasks",
-    "Courier Tracking"
+    "Courier Tracking",
+    "PDF Reader"
 ])
 
 # ---------------- DASHBOARD ---------------- #
@@ -82,41 +82,21 @@ with tab1:
     orders = len(st.session_state.df) if st.session_state.df is not None else 0
     tasks = len(st.session_state.tasks)
 
-    col1, col2, col3, col4 = st.columns(4)
+    c1,c2,c3,c4 = st.columns(4)
 
-    col1.metric("Orders Loaded", orders)
-    col2.metric("Department Tasks", tasks)
-    col3.metric("Active Shipments", 2)
-    col4.metric("Departments Active", 5)
-
-    st.markdown("---")
-
-    st.subheader("Order Progress Tracker")
-
-    if st.session_state.tasks:
-
-        df = pd.DataFrame(st.session_state.tasks)
-
-        summary = df.groupby("Department")["Status"].value_counts().unstack().fillna(0)
-
-        st.dataframe(summary)
-
-    else:
-
-        st.info("No tasks created yet")
+    c1.metric("Products Loaded", orders)
+    c2.metric("Department Tasks", tasks)
+    c3.metric("Active Shipments", 2)
+    c4.metric("Departments", 5)
 
     st.markdown("---")
 
-    st.subheader("Recent Activity Alerts")
+    st.subheader("Recent Alerts")
 
     if st.session_state.alerts:
-
-        for alert in st.session_state.alerts[-5:]:
-
-            st.info(alert)
-
+        for a in st.session_state.alerts[-5:]:
+            st.info(a)
     else:
-
         st.write("No alerts yet")
 
 # ---------------- UPLOAD EXCEL ---------------- #
@@ -125,123 +105,105 @@ with tab2:
 
     st.header("Upload Sales Contract Excel")
 
-    excel = st.file_uploader("Upload Excel", type=["xlsx"])
+    file = st.file_uploader("Upload Excel", type=["xlsx"])
 
-    if excel:
+    if file:
 
-        df = pd.read_excel(excel)
+        df = pd.read_excel(file)
+
+        df.columns = df.columns.str.strip()
 
         st.session_state.df = df
 
-        st.success("Sales contract uploaded")
+        st.success("Sales Contract Uploaded")
 
         st.dataframe(df)
 
-        if st.button("Generate Smart Tasks"):
-
-            df.columns = df.columns.str.lower().str.strip()
-
-            if "item order" in df.columns:
-
-                unique_products = df["item order"].unique()
-
-                for product in unique_products:
-
-                    departments = [
-                        ("Procurement", f"Procure raw material for {product}"),
-                        ("Polishing", f"Polish batch for {product}"),
-                        ("Packaging", f"Pack finished goods for {product}"),
-                        ("Dispatch", f"Prepare dispatch for {product}")
-                    ]
-
-                    for dept, desc in departments:
-
-                        st.session_state.tasks.append({
-                            "Department": dept,
-                            "Task": desc,
-                            "Status": "Pending"
-                        })
-
-                st.success("Smart tasks generated automatically")
-
-            else:
-
-                st.warning("Column 'item order' not found")
-
-# ---------------- PRODUCT GROUPING ---------------- #
+# ---------------- BOM GENERATOR ---------------- #
 
 with tab3:
 
-    st.header("Product Grouping")
+    st.header("BOM Generator")
 
     if st.session_state.df is not None:
 
         df = st.session_state.df.copy()
 
-        df.columns = df.columns.str.lower().str.strip()
+        df.columns = df.columns.str.strip()
 
-        if "item order" in df.columns and "item size" in df.columns:
+        required = ["Item","ItmSize","itmColor","ReqQty"]
 
-            if "item color" not in df.columns:
-                df["item color"] = ""
+        if all(c in df.columns for c in required):
 
-            df["item color"] = df["item color"].fillna("")
+            bom = df.groupby(
+                ["Item","ItmSize","itmColor"]
+            )["ReqQty"].sum().reset_index()
 
-            df["product_key"] = (
-                df["item order"].astype(str)
-                + " | "
-                + df["item size"].astype(str)
-                + " | "
-                + df["item color"].astype(str)
-            )
+            st.session_state.bom = bom
 
-            product_list = df["product_key"].unique()
+            st.subheader("Generated BOM")
 
-            for product in product_list:
+            st.dataframe(bom)
 
-                st.subheader(product)
+            if st.button("Generate Department Tasks from BOM"):
+
+                for _,row in bom.iterrows():
+
+                    product = f"{row['Item']} {row['ItmSize']} {row['itmColor']}"
+
+                    qty = row["ReqQty"]
+
+                    departments = [
+                        ("Procurement", f"Procure materials for {product} ({qty})"),
+                        ("Polishing", f"Polish batch for {product}"),
+                        ("Packaging", f"Pack items for {product}"),
+                        ("Dispatch", f"Dispatch order for {product}")
+                    ]
+
+                    for dept,task in departments:
+
+                        st.session_state.tasks.append({
+                            "Department":dept,
+                            "Task":task,
+                            "Status":"Pending"
+                        })
+
+                st.success("Department tasks created from BOM")
 
         else:
 
-            st.warning("Required columns missing")
+            st.warning("Excel columns not matching expected structure")
 
-# ---------------- PDF READER ---------------- #
+    else:
+
+        st.info("Upload Sales Contract first")
+
+# ---------------- PRODUCT VIEW ---------------- #
 
 with tab4:
 
-    st.header("Upload Sales Contract / Invoice")
+    st.header("Product Overview")
 
-    pdf = st.file_uploader("Upload PDF", type=["pdf"])
+    if st.session_state.df is not None:
 
-    if pdf:
+        df = st.session_state.df
 
-        extracted = ""
+        show_cols = [
+            "Item",
+            "ItmShape",
+            "ItmSize",
+            "itmColor",
+            "ReqQty",
+            "QtyUOM"
+        ]
 
-        with pdfplumber.open(pdf) as pdf_file:
+        available = [c for c in show_cols if c in df.columns]
 
-            for page in pdf_file.pages:
+        st.dataframe(df[available])
 
-                text = page.extract_text()
+    else:
 
-                if text:
-                    extracted += text + "\n"
-
-        st.text_area("Extracted Text", extracted, height=250)
-
-        lines = extracted.split("\n")
-
-        buyer = lines[0] if lines else "Not detected"
-
-        qty = re.findall(r"\b\d+\b", extracted)
-
-        col1, col2 = st.columns(2)
-
-        col1.success(f"Buyer: {buyer}")
-
-        if qty:
-            col2.success(f"Quantity Detected: {qty[0]}")
-        else:
-            col2.warning("Quantity not detected")
+        st.info("Upload Excel first")
 
 # ---------------- TASK BOARD ---------------- #
 
@@ -251,20 +213,18 @@ with tab5:
 
     if st.session_state.tasks:
 
-        pending, progress, completed = [], [], []
+        pending,progress,done = [],[],[]
 
-        for task in st.session_state.tasks:
+        for t in st.session_state.tasks:
 
-            if task["Status"] == "Pending":
-                pending.append(task)
-
-            elif task["Status"] == "In Progress":
-                progress.append(task)
-
+            if t["Status"]=="Pending":
+                pending.append(t)
+            elif t["Status"]=="In Progress":
+                progress.append(t)
             else:
-                completed.append(task)
+                done.append(t)
 
-        col1, col2, col3 = st.columns(3)
+        col1,col2,col3 = st.columns(3)
 
         with col1:
 
@@ -284,46 +244,42 @@ with tab5:
 
             st.subheader("Completed")
 
-            for t in completed:
+            for t in done:
                 st.write(f"{t['Department']} - {t['Task']}")
 
         st.markdown("---")
 
-        st.subheader("Update Task Status")
+        st.subheader("Update Status")
 
-        for i, task in enumerate(st.session_state.tasks):
+        for i,t in enumerate(st.session_state.tasks):
 
-            col1, col2, col3 = st.columns(3)
+            c1,c2,c3 = st.columns(3)
 
-            col1.write(task["Department"])
-            col2.write(task["Task"])
+            c1.write(t["Department"])
+            c2.write(t["Task"])
 
-            new_status = col3.selectbox(
+            new = c3.selectbox(
                 "Status",
                 ["Pending","In Progress","Completed"],
-                index=["Pending","In Progress","Completed"].index(task["Status"]),
-                key=f"task_{i}"
+                index=["Pending","In Progress","Completed"].index(t["Status"]),
+                key=f"task{i}"
             )
 
-            if new_status != task["Status"]:
+            if new != t["Status"]:
 
-                if new_status == "In Progress":
-                    st.session_state.alerts.append(
-                        f"⚡ {task['Department']} started task '{task['Task']}'"
-                    )
+                if new=="In Progress":
+                    st.session_state.alerts.append(f"{t['Department']} started {t['Task']}")
 
-                if new_status == "Completed":
-                    st.session_state.alerts.append(
-                        f"✅ {task['Department']} completed task '{task['Task']}'"
-                    )
+                if new=="Completed":
+                    st.session_state.alerts.append(f"{t['Department']} completed {t['Task']}")
 
-                st.session_state.tasks[i]["Status"] = new_status
+                st.session_state.tasks[i]["Status"] = new
 
     else:
 
         st.info("No tasks created yet")
 
-# ---------------- COURIER TRACKER ---------------- #
+# ---------------- COURIER TRACKING ---------------- #
 
 with tab6:
 
@@ -343,5 +299,32 @@ with tab6:
         st.success("Tracking information fetched")
 
         st.write("Status: In Transit")
-
         st.write("Expected Delivery: 3 Days")
+
+# ---------------- PDF READER ---------------- #
+
+with tab7:
+
+    st.header("PDF Reader")
+
+    pdf = st.file_uploader("Upload PDF", type=["pdf"])
+
+    if pdf:
+
+        text = ""
+
+        with pdfplumber.open(pdf) as pdf_file:
+
+            for p in pdf_file.pages:
+
+                t = p.extract_text()
+
+                if t:
+                    text += t
+
+        st.text_area("Extracted Text", text, height=250)
+
+        nums = re.findall(r"\b\d+\b", text)
+
+        if nums:
+            st.success(f"Detected quantity: {nums[0]}")

@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 import re
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Banares Beads Operations", layout="wide")
 
@@ -34,6 +35,7 @@ def login():
             if u == "demo" and p == "AffiNexa@123":
                 st.session_state.logged_in = True
                 st.rerun()
+
             else:
                 st.error("Invalid credentials")
 
@@ -41,7 +43,7 @@ def login():
 
 login()
 
-# ---------------- SESSION ---------------- #
+# ---------------- SESSION STATE ---------------- #
 
 if "df" not in st.session_state:
     st.session_state.df = None
@@ -59,7 +61,7 @@ if "bom" not in st.session_state:
 
 st.title("Banares Beads Operations Control System")
 
-st.markdown("Sales Contract → *BOM Generation → Department Tasks → Dispatch Tracking*")
+st.markdown("Sales Contract → **BOM → Department Tasks → Dispatch Tracking**")
 
 # ---------------- TABS ---------------- #
 
@@ -79,24 +81,50 @@ with tab1:
 
     st.header("Operations Dashboard")
 
-    orders = len(st.session_state.df) if st.session_state.df is not None else 0
-    tasks = len(st.session_state.tasks)
+    total_products = len(st.session_state.df) if st.session_state.df is not None else 0
+    total_tasks = len(st.session_state.tasks)
 
-    c1,c2,c3,c4 = st.columns(4)
+    completed = sum(1 for t in st.session_state.tasks if t["Status"] == "Completed")
 
-    c1.metric("Products Loaded", orders)
-    c2.metric("Department Tasks", tasks)
-    c3.metric("Active Shipments", 2)
-    c4.metric("Departments", 5)
+    delayed = 0
+    today = datetime.today().date()
+
+    for t in st.session_state.tasks:
+
+        if t["Status"] != "Completed" and today > t["Deadline"]:
+            delayed += 1
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("Products", total_products)
+    col2.metric("Tasks", total_tasks)
+    col3.metric("Completed", completed)
+    col4.metric("Delayed Tasks", delayed)
+
+    st.markdown("---")
+
+    st.subheader("Task Status Summary")
+
+    if st.session_state.tasks:
+
+        df = pd.DataFrame(st.session_state.tasks)
+
+        summary = df.groupby(["Department","Status"]).size().unstack(fill_value=0)
+
+        st.dataframe(summary)
 
     st.markdown("---")
 
     st.subheader("Recent Alerts")
 
     if st.session_state.alerts:
+
         for a in st.session_state.alerts[-5:]:
-            st.info(a)
+
+            st.warning(a)
+
     else:
+
         st.write("No alerts yet")
 
 # ---------------- UPLOAD EXCEL ---------------- #
@@ -141,8 +169,6 @@ with tab3:
 
             st.session_state.bom = bom
 
-            st.subheader("Generated BOM")
-
             st.dataframe(bom)
 
             if st.button("Generate Department Tasks from BOM"):
@@ -150,8 +176,9 @@ with tab3:
                 for _,row in bom.iterrows():
 
                     product = f"{row['Item']} {row['ItmSize']} {row['itmColor']}"
-
                     qty = row["ReqQty"]
+
+                    deadline = datetime.today().date() + timedelta(days=3)
 
                     departments = [
                         ("Procurement", f"Procure materials for {product} ({qty})"),
@@ -165,18 +192,15 @@ with tab3:
                         st.session_state.tasks.append({
                             "Department":dept,
                             "Task":task,
-                            "Status":"Pending"
+                            "Status":"Pending",
+                            "Deadline":deadline
                         })
 
-                st.success("Department tasks created from BOM")
+                st.success("Tasks generated with deadlines")
 
         else:
 
             st.warning("Excel columns not matching expected structure")
-
-    else:
-
-        st.info("Upload Sales Contract first")
 
 # ---------------- PRODUCT VIEW ---------------- #
 
@@ -189,21 +213,12 @@ with tab4:
         df = st.session_state.df
 
         show_cols = [
-            "Item",
-            "ItmShape",
-            "ItmSize",
-            "itmColor",
-            "ReqQty",
-            "QtyUOM"
+            "Item","ItmShape","ItmSize","itmColor","ReqQty","QtyUOM"
         ]
 
         available = [c for c in show_cols if c in df.columns]
 
         st.dataframe(df[available])
-
-    else:
-
-        st.info("Upload Excel first")
 
 # ---------------- TASK BOARD ---------------- #
 
@@ -213,67 +228,40 @@ with tab5:
 
     if st.session_state.tasks:
 
-        pending,progress,done = [],[],[]
-
-        for t in st.session_state.tasks:
-
-            if t["Status"]=="Pending":
-                pending.append(t)
-            elif t["Status"]=="In Progress":
-                progress.append(t)
-            else:
-                done.append(t)
-
-        col1,col2,col3 = st.columns(3)
-
-        with col1:
-
-            st.subheader("Pending")
-
-            for t in pending:
-                st.write(f"{t['Department']} - {t['Task']}")
-
-        with col2:
-
-            st.subheader("In Progress")
-
-            for t in progress:
-                st.write(f"{t['Department']} - {t['Task']}")
-
-        with col3:
-
-            st.subheader("Completed")
-
-            for t in done:
-                st.write(f"{t['Department']} - {t['Task']}")
-
-        st.markdown("---")
-
-        st.subheader("Update Status")
+        today = datetime.today().date()
 
         for i,t in enumerate(st.session_state.tasks):
 
-            c1,c2,c3 = st.columns(3)
+            c1,c2,c3,c4 = st.columns([2,4,2,2])
 
             c1.write(t["Department"])
             c2.write(t["Task"])
+            c3.write(f"Deadline: {t['Deadline']}")
 
-            new = c3.selectbox(
+            status = c4.selectbox(
                 "Status",
                 ["Pending","In Progress","Completed"],
                 index=["Pending","In Progress","Completed"].index(t["Status"]),
                 key=f"task{i}"
             )
 
-            if new != t["Status"]:
+            if status != t["Status"]:
 
-                if new=="In Progress":
-                    st.session_state.alerts.append(f"{t['Department']} started {t['Task']}")
+                if status == "In Progress":
+                    st.session_state.alerts.append(
+                        f"{t['Department']} started task"
+                    )
 
-                if new=="Completed":
-                    st.session_state.alerts.append(f"{t['Department']} completed {t['Task']}")
+                if status == "Completed":
+                    st.session_state.alerts.append(
+                        f"{t['Department']} completed task"
+                    )
 
-                st.session_state.tasks[i]["Status"] = new
+                st.session_state.tasks[i]["Status"] = status
+
+            if t["Status"] != "Completed" and today > t["Deadline"]:
+
+                st.error(f"⚠ Delay detected in {t['Department']}")
 
     else:
 

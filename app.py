@@ -35,13 +35,19 @@ def login():
             if user == "demo" and pwd == "AffiNexa@123":
                 st.session_state.logged_in = True
                 st.rerun()
-
             else:
                 st.error("Invalid credentials")
 
         st.stop()
 
 login()
+
+# ---------------- SIDEBAR ---------------- #
+
+department = st.sidebar.selectbox(
+    "Select Department",
+    ["Director","Procurement","Polishing","Packaging","Dispatch"]
+)
 
 # ---------------- SESSION STATE ---------------- #
 
@@ -81,15 +87,13 @@ with tab1:
 
     st.header("Operations Dashboard")
 
-    total_products = len(st.session_state.df) if st.session_state.df is not None else 0
+    today = datetime.today().date()
 
     pending = sum(1 for t in st.session_state.tasks if t["Status"] == "Pending")
     in_progress = sum(1 for t in st.session_state.tasks if t["Status"] == "In Progress")
     completed = sum(1 for t in st.session_state.tasks if t["Status"] == "Completed")
 
     delayed = 0
-    today = datetime.today().date()
-
     for t in st.session_state.tasks:
         if t["Status"] != "Completed" and today > t["Deadline"]:
             delayed += 1
@@ -103,19 +107,33 @@ with tab1:
 
     st.markdown("---")
 
-    st.subheader("Recent Alerts")
+    # Deadline Alerts
+    st.subheader("Alerts")
 
-    if st.session_state.alerts:
+    for t in st.session_state.tasks:
 
-        for a in st.session_state.alerts[-5:]:
+        if t["Status"] != "Completed":
 
-            st.warning(a)
+            days_left = (t["Deadline"] - today).days
 
-    else:
+            if days_left == 1:
+                st.warning(f"⚠ Deadline approaching for {t['Department']}")
 
-        st.write("No alerts yet")
+            if days_left < 0:
+                st.error(f"🚨 Delay detected in {t['Department']}")
 
-# ---------------- UPLOAD EXCEL ---------------- #
+    st.markdown("---")
+
+    # Workload Chart
+    if st.session_state.tasks:
+
+        df = pd.DataFrame(st.session_state.tasks)
+
+        st.subheader("Department Workload")
+
+        st.bar_chart(df["Department"].value_counts())
+
+# ---------------- UPLOAD SALES CONTRACT ---------------- #
 
 with tab2:
 
@@ -126,7 +144,6 @@ with tab2:
     if file:
 
         df = pd.read_excel(file)
-
         df.columns = df.columns.str.strip()
 
         st.session_state.df = df
@@ -182,10 +199,6 @@ with tab3:
 
                 st.success("Department tasks created")
 
-        else:
-
-            st.warning("Excel columns not matching expected structure")
-
 # ---------------- PRODUCT VIEW ---------------- #
 
 with tab4:
@@ -196,11 +209,9 @@ with tab4:
 
         df = st.session_state.df
 
-        show_cols = [
-            "Item","ItmShape","ItmSize","itmColor","ReqQty","QtyUOM"
-        ]
+        cols = ["Item","ItmShape","ItmSize","itmColor","ReqQty","QtyUOM"]
 
-        available = [c for c in show_cols if c in df.columns]
+        available = [c for c in cols if c in df.columns]
 
         st.dataframe(df[available])
 
@@ -210,11 +221,20 @@ with tab5:
 
     st.header("Department Task Board")
 
-    if st.session_state.tasks:
+    today = datetime.today().date()
 
-        today = datetime.today().date()
+    tasks_to_show = st.session_state.tasks
 
-        for i,t in enumerate(st.session_state.tasks):
+    if department != "Director":
+
+        tasks_to_show = [
+            t for t in st.session_state.tasks
+            if t["Department"] == department
+        ]
+
+    if tasks_to_show:
+
+        for i,t in enumerate(tasks_to_show):
 
             c1,c2,c3,c4,c5 = st.columns([2,4,2,2,2])
 
@@ -239,7 +259,7 @@ with tab5:
                     if status == "Completed":
                         st.session_state.alerts.append(f"{t['Department']} completed task")
 
-                    st.session_state.tasks[i]["Status"] = status
+                    t["Status"] = status
 
                     st.success("Task updated")
 
@@ -249,7 +269,7 @@ with tab5:
 
     else:
 
-        st.info("No tasks created yet")
+        st.info("No tasks available")
 
 # ---------------- COURIER TRACKING ---------------- #
 

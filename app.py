@@ -223,76 +223,46 @@ with tab5:
 
     today = datetime.today().date()
 
-    tasks_to_show = st.session_state.tasks
+    for i, t in enumerate(st.session_state.tasks):
 
-    if department != "Director":
+        # Show only relevant department tasks
+        if department != "Director" and t["Department"] != department:
+            continue
 
-        tasks_to_show = [
-            t for t in st.session_state.tasks
-            if t["Department"] == department
-        ]
+        c1,c2,c3,c4,c5 = st.columns([2,4,2,2,2])
 
-    if tasks_to_show:
+        c1.write(t["Department"])
+        c2.write(t["Task"])
+        c3.write(f"Deadline: {t['Deadline']}")
 
-        for i,t in enumerate(tasks_to_show):
+        status = c4.selectbox(
+            "Status",
+            ["Pending","In Progress","Completed"],
+            index=["Pending","In Progress","Completed"].index(t["Status"]),
+            key=f"status_{i}"
+        )
 
-            c1,c2,c3,c4,c5 = st.columns([2,4,2,2,2])
+        if c5.button("Submit", key=f"submit_{i}"):
 
-            c1.write(t["Department"])
-            c2.write(t["Task"])
-            c3.write(f"Deadline: {t['Deadline']}")
+            if status != t["Status"]:
 
-            status = c4.selectbox(
-                "Status",
-                ["Pending","In Progress","Completed"],
-                index=["Pending","In Progress","Completed"].index(t["Status"]),
-                key=f"status{i}"
-            )
+                if status == "In Progress":
+                    st.session_state.alerts.append(
+                        f"{t['Department']} started task"
+                    )
 
-            if c5.button("Submit", key=f"submit{i}"):
+                if status == "Completed":
+                    st.session_state.alerts.append(
+                        f"{t['Department']} completed task"
+                    )
 
-                if status != t["Status"]:
+                st.session_state.tasks[i]["Status"] = status
 
-                    if status == "In Progress":
-                        st.session_state.alerts.append(f"{t['Department']} started task")
+                st.success("Task updated")
 
-                    if status == "Completed":
-                        st.session_state.alerts.append(f"{t['Department']} completed task")
+        if t["Status"] != "Completed" and today > t["Deadline"]:
 
-                    t["Status"] = status
-
-                    st.success("Task updated")
-
-            if t["Status"] != "Completed" and today > t["Deadline"]:
-
-                st.error(f"⚠ Delay detected in {t['Department']}")
-
-    else:
-
-        st.info("No tasks available")
-
-# ---------------- COURIER TRACKING ---------------- #
-
-with tab6:
-
-    st.header("Courier Tracking")
-
-    courier = st.selectbox(
-        "Courier Company",
-        ["Blue Dart","DTDC","Delhivery","DHL","FedEx"]
-    )
-
-    awb = st.text_input("AWB Number")
-
-    destination = st.text_input("Destination")
-
-    if st.button("Track Shipment"):
-
-        st.success("Tracking information fetched")
-
-        st.write("Status: In Transit")
-        st.write("Expected Delivery: 3 Days")
-
+            st.error(f"⚠ Delay detected in {t['Department']}")
 # ---------------- PDF READER ---------------- #
 
 with tab7:

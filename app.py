@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Banares Beads Operations", layout="wide")
 
-# ---------------- STYLE ---------------- #
+# ---------------- UI STYLE ---------------- #
 
 st.markdown("""
 <style>
@@ -27,12 +27,12 @@ def login():
 
         st.title("AffiNexa Demo Login")
 
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
+        user = st.text_input("Username")
+        pwd = st.text_input("Password", type="password")
 
         if st.button("Login"):
 
-            if u == "demo" and p == "AffiNexa@123":
+            if user == "demo" and pwd == "AffiNexa@123":
                 st.session_state.logged_in = True
                 st.rerun()
 
@@ -82,36 +82,24 @@ with tab1:
     st.header("Operations Dashboard")
 
     total_products = len(st.session_state.df) if st.session_state.df is not None else 0
-    total_tasks = len(st.session_state.tasks)
 
+    pending = sum(1 for t in st.session_state.tasks if t["Status"] == "Pending")
+    in_progress = sum(1 for t in st.session_state.tasks if t["Status"] == "In Progress")
     completed = sum(1 for t in st.session_state.tasks if t["Status"] == "Completed")
 
     delayed = 0
     today = datetime.today().date()
 
     for t in st.session_state.tasks:
-
         if t["Status"] != "Completed" and today > t["Deadline"]:
             delayed += 1
 
-    col1, col2, col3, col4 = st.columns(4)
+    c1,c2,c3,c4 = st.columns(4)
 
-    col1.metric("Products", total_products)
-    col2.metric("Tasks", total_tasks)
-    col3.metric("Completed", completed)
-    col4.metric("Delayed Tasks", delayed)
-
-    st.markdown("---")
-
-    st.subheader("Task Status Summary")
-
-    if st.session_state.tasks:
-
-        df = pd.DataFrame(st.session_state.tasks)
-
-        summary = df.groupby(["Department","Status"]).size().unstack(fill_value=0)
-
-        st.dataframe(summary)
+    c1.metric("Pending Tasks", pending)
+    c2.metric("In Progress", in_progress)
+    c3.metric("Completed", completed)
+    c4.metric("Delayed Tasks", delayed)
 
     st.markdown("---")
 
@@ -157,15 +145,11 @@ with tab3:
 
         df = st.session_state.df.copy()
 
-        df.columns = df.columns.str.strip()
-
         required = ["Item","ItmSize","itmColor","ReqQty"]
 
-        if all(c in df.columns for c in required):
+        if all(col in df.columns for col in required):
 
-            bom = df.groupby(
-                ["Item","ItmSize","itmColor"]
-            )["ReqQty"].sum().reset_index()
+            bom = df.groupby(["Item","ItmSize","itmColor"])["ReqQty"].sum().reset_index()
 
             st.session_state.bom = bom
 
@@ -181,7 +165,7 @@ with tab3:
                     deadline = datetime.today().date() + timedelta(days=3)
 
                     departments = [
-                        ("Procurement", f"Procure materials for {product} ({qty})"),
+                        ("Procurement", f"Procure material for {product} ({qty})"),
                         ("Polishing", f"Polish batch for {product}"),
                         ("Packaging", f"Pack items for {product}"),
                         ("Dispatch", f"Dispatch order for {product}")
@@ -196,7 +180,7 @@ with tab3:
                             "Deadline":deadline
                         })
 
-                st.success("Tasks generated with deadlines")
+                st.success("Department tasks created")
 
         else:
 
@@ -232,7 +216,7 @@ with tab5:
 
         for i,t in enumerate(st.session_state.tasks):
 
-            c1,c2,c3,c4 = st.columns([2,4,2,2])
+            c1,c2,c3,c4,c5 = st.columns([2,4,2,2,2])
 
             c1.write(t["Department"])
             c2.write(t["Task"])
@@ -242,22 +226,22 @@ with tab5:
                 "Status",
                 ["Pending","In Progress","Completed"],
                 index=["Pending","In Progress","Completed"].index(t["Status"]),
-                key=f"task{i}"
+                key=f"status{i}"
             )
 
-            if status != t["Status"]:
+            if c5.button("Submit", key=f"submit{i}"):
 
-                if status == "In Progress":
-                    st.session_state.alerts.append(
-                        f"{t['Department']} started task"
-                    )
+                if status != t["Status"]:
 
-                if status == "Completed":
-                    st.session_state.alerts.append(
-                        f"{t['Department']} completed task"
-                    )
+                    if status == "In Progress":
+                        st.session_state.alerts.append(f"{t['Department']} started task")
 
-                st.session_state.tasks[i]["Status"] = status
+                    if status == "Completed":
+                        st.session_state.alerts.append(f"{t['Department']} completed task")
+
+                    st.session_state.tasks[i]["Status"] = status
+
+                    st.success("Task updated")
 
             if t["Status"] != "Completed" and today > t["Deadline"]:
 

@@ -4,7 +4,7 @@ import pdfplumber
 import re
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Banares Beads Operations", layout="wide")
+st.set_page_config(page_title="Export House Operations", layout="wide")
 
 # ---------------- UI STYLE ---------------- #
 
@@ -65,7 +65,7 @@ if "bom" not in st.session_state:
 
 # ---------------- HEADER ---------------- #
 
-st.title("Banares Beads Operations Control System")
+st.title("Export House Operations Control System")
 
 st.markdown("Sales Contract → **BOM → Department Tasks → Dispatch Tracking**")
 
